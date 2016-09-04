@@ -44,16 +44,23 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                 return;
             }
 
+            var shouldPause = false;
+
             lock (_lock)
             {
                 Size += count;
                 if (!_connectionPaused && Size >= _maxSize)
                 {
                     _connectionPaused = true;
-                    _connectionThread.Post(
-                        (connectionControl) => ((IConnectionControl)connectionControl).Pause(),
-                        _connectionControl);
+                    shouldPause = true;
                 }
+            }
+
+            if (shouldPause)
+            {
+                _connectionThread.Post(
+                    (connectionControl) => ((IConnectionControl)connectionControl).Pause(),
+                    _connectionControl);
             }
         }
 
@@ -67,16 +74,23 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                 return;
             }
 
+            var shouldResume = false;
+
             lock (_lock)
             {
                 Size -= count;
                 if (_connectionPaused && Size < _maxSize)
                 {
                     _connectionPaused = false;
-                    _connectionThread.Post(
-                        (connectionControl) => ((IConnectionControl)connectionControl).Resume(),
-                        _connectionControl);
+                    shouldResume = true;
                 }
+            }
+
+            if (shouldResume)
+            {
+                _connectionThread.Post(
+                    (connectionControl) => ((IConnectionControl)connectionControl).Resume(),
+                    _connectionControl);
             }
         }
     }
