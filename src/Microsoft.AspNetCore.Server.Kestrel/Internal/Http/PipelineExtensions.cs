@@ -98,59 +98,84 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
         // Temporary until the fast write implementation propagates from corefx
         public unsafe static void WriteFast(this WritableBuffer buffer, ReadOnlySpan<byte> source)
         {
+            var sourceLength = (uint)source.Length;
+            if (sourceLength > 0)
+            {
+                var dest = buffer.Memory.Span;
+                var destLength = dest.Length;
+
+                if (sourceLength <= destLength)
+                {
+                    Unsafe.CopyBlockUnaligned(
+                        ref dest.DangerousGetPinnableReference(),
+                        ref source.DangerousGetPinnableReference(),
+                        sourceLength);
+
+                    buffer.Advance((int)sourceLength);
+                }
+                else if (destLength == 0)
+                {
+                    buffer.WriteAlloc(source);
+                }
+                else
+                {
+                    buffer.WriteMultiBuffer(source);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static unsafe void WriteAlloc(this WritableBuffer buffer, ReadOnlySpan<byte> source)
+        {
+            buffer.Ensure();
+
+            // Get the new span and length
             var dest = buffer.Memory.Span;
             var destLength = dest.Length;
-
-            if (destLength == 0)
-            {
-                buffer.Ensure();
-
-                // Get the new span and length
-                dest = buffer.Memory.Span;
-                destLength = dest.Length;
-            }
 
             var sourceLength = source.Length;
             if (sourceLength <= destLength)
             {
-                ref byte pSource = ref source.DangerousGetPinnableReference();
-                ref byte pDest = ref dest.DangerousGetPinnableReference();
-                Unsafe.CopyBlockUnaligned(ref pDest, ref pSource, (uint)sourceLength);
-                buffer.Advance(sourceLength);
-                return;
-            }
+                Unsafe.CopyBlockUnaligned(
+                    ref dest.DangerousGetPinnableReference(), 
+                    ref source.DangerousGetPinnableReference(), 
+                    (uint) sourceLength);
 
-            buffer.WriteMultiBuffer(source);
+                buffer.Advance(sourceLength);
+            }
+            else
+            {
+                buffer.WriteMultiBuffer(source);
+            }
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private static unsafe void WriteMultiBuffer(this WritableBuffer buffer, ReadOnlySpan<byte> source)
         {
             var remaining = source.Length;
             var offset = 0;
 
-            fixed (byte* pSource = &source.DangerousGetPinnableReference())
+            ref byte pSource = ref source.DangerousGetPinnableReference();
+            while (remaining > 0)
             {
-                while (remaining > 0)
+                var writable = Math.Min(remaining, buffer.Memory.Length);
+
+                buffer.Ensure(writable);
+
+                if (writable == 0)
                 {
-                    var writable = Math.Min(remaining, buffer.Memory.Length);
-
-                    buffer.Ensure(writable);
-
-                    if (writable == 0)
-                    {
-                        continue;
-                    }
-
-                    fixed (byte* pDest = &buffer.Memory.Span.DangerousGetPinnableReference())
-                    {
-                        Unsafe.CopyBlockUnaligned(pDest, pSource + offset, (uint)writable);
-                    }
-
-                    remaining -= writable;
-                    offset += writable;
-
-                    buffer.Advance(writable);
+                    continue;
                 }
+
+                Unsafe.CopyBlockUnaligned(
+                    ref buffer.Memory.Span.DangerousGetPinnableReference(), 
+                    ref Unsafe.AddByteOffset(ref pSource, (IntPtr)offset), 
+                    (uint)writable);
+
+                remaining -= writable;
+                offset += writable;
+
+                buffer.Advance(writable);
             }
         }
 
