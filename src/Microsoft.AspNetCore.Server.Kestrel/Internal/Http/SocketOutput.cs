@@ -14,6 +14,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
     public class SocketOutput : ISocketOutput
     {
         private static readonly ArraySegment<byte> _emptyData = new ArraySegment<byte>(new byte[0]);
+        private PipelineWriter _writer = new PipelineWriter();
 
         private readonly KestrelThread _thread;
         private readonly UvStreamHandle _socket;
@@ -64,8 +65,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             CancellationToken cancellationToken,
             bool chunk = false)
         {
-            var writableBuffer = default(WritableBuffer);
-
             lock (_contextLock)
             {
                 if (_socket.IsClosed)
@@ -80,27 +79,27 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                     return;
                 }
 
-                writableBuffer = _pipe.Writer.Alloc();
+                _writer.Initalize(_pipe.Writer.Alloc());
 
                 if (buffer.Count > 0)
                 {
                     if (chunk)
                     {
-                        ChunkWriter.WriteBeginChunkBytes(ref writableBuffer, buffer.Count);
+                        ChunkWriter.WriteBeginChunkBytes(_writer, buffer.Count);
                     }
 
-                    writableBuffer.Write(buffer);
+                    _writer.Write(buffer);
 
                     if (chunk)
                     {
-                        ChunkWriter.WriteEndChunkBytes(ref writableBuffer);
+                        ChunkWriter.WriteEndChunkBytes(_writer);
                     }
                 }
 
-                writableBuffer.Commit();
+                _writer.Commit();
             }
 
-            await FlushAsync(writableBuffer);
+            await FlushAsync();
         }
 
         public void End(ProduceEndType endType)
@@ -120,9 +119,9 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             _pipe.Writer.Complete();
         }
 
-        private Task FlushAsync(WritableBuffer writableBuffer)
+        private Task FlushAsync()
         {
-            var awaitable = writableBuffer.FlushAsync();
+            var awaitable = _writer.FlushAsync();
             if (awaitable.IsCompleted)
             {
                 // The flush task can't fail today

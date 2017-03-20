@@ -12,6 +12,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Performance
     [Config(typeof(CoreConfig))]
     public class RequestParsingBenchmark
     {
+        private PipelineWriter _writer = new PipelineWriter();
+
         public IPipe Pipe { get; set; }
 
         public Frame<object> Frame { get; set; }
@@ -101,10 +103,10 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Performance
 
         private void InsertData(byte[] bytes)
         {
-            var buffer = Pipe.Writer.Alloc(2048);
-            buffer.WriteFast(bytes);
+            _writer.Initalize(Pipe.Writer.Alloc(2048));
+            _writer.WriteFast(bytes);
             // There should not be any backpressure and task completes immediately
-            buffer.FlushAsync().GetAwaiter().GetResult();
+            _writer.FlushAsync().GetAwaiter().GetResult();
         }
 
         private void ParseData()

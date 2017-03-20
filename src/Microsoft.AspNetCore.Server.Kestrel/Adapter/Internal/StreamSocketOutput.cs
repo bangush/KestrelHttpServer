@@ -19,6 +19,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Adapter.Internal
         private object _sync = new object();
         private bool _completed;
 
+        private PipelineWriter _writer = new PipelineWriter();
+
         public StreamSocketOutput(Stream outputStream, IPipe pipe)
         {
             _outputStream = outputStream;
@@ -41,23 +43,23 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Adapter.Internal
                     return;
                 }
 
-                var writableBuffer = _pipe.Writer.Alloc();
+                _writer.Initalize(_pipe.Writer.Alloc());
 
                 if (buffer.Count > 0)
                 {
                     if (chunk)
                     {
-                        ChunkWriter.WriteBeginChunkBytes(ref writableBuffer, buffer.Count);
-                        writableBuffer.WriteFast(buffer);
-                        ChunkWriter.WriteEndChunkBytes(ref writableBuffer);
+                        ChunkWriter.WriteBeginChunkBytes(_writer, buffer.Count);
+                        _writer.WriteFast(buffer);
+                        ChunkWriter.WriteEndChunkBytes(_writer);
                     }
                     else
                     {
-                        writableBuffer.WriteFast(buffer);
+                        _writer.WriteFast(buffer);
                     }
                 }
 
-                flushAwaiter = writableBuffer.FlushAsync();
+                flushAwaiter = _writer.FlushAsync();
             }
 
             await flushAwaiter;

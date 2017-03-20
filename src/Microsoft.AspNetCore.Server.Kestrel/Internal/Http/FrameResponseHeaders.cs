@@ -35,9 +35,9 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             return GetEnumerator();
         }
 
-        public void CopyTo(ref WritableBuffer output)
+        public void CopyTo(PipelineWriter output)
         {
-            CopyToFast(ref output);
+            CopyToFast(output);
             if (MaybeUnknown != null)
             {
                 foreach (var kv in MaybeUnknown)

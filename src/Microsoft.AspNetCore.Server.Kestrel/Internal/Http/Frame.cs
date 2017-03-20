@@ -47,6 +47,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
         private readonly object _onCompletedSync = new Object();
 
         private Streams _frameStreams;
+        private PipelineWriter _writer = new PipelineWriter();
 
         protected Stack<KeyValuePair<Func<object, Task>, object>> _onStarting;
         protected Stack<KeyValuePair<Func<object, Task>, object>> _onCompleted;
@@ -784,9 +785,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
 
             _requestProcessingStatus = RequestProcessingStatus.ResponseStarted;
 
-            var statusBytes = ReasonPhrases.ToStatusBytes(StatusCode, ReasonPhrase);
-
-            CreateResponseHeader(statusBytes, appCompleted);
+            CreateResponseHeader(appCompleted);
         }
 
         protected Task TryProduceInvalidRequestResponse()
@@ -881,19 +880,21 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             }
         }
 
-        private void CreateResponseHeader(
-            byte[] statusBytes,
-            bool appCompleted)
+        private void CreateResponseHeader(bool appCompleted)
         {
+            var keepAlive = _keepAlive;
             var responseHeaders = FrameResponseHeaders;
             var hasConnection = responseHeaders.HasConnection;
-            var connectionOptions = FrameHeaders.ParseConnection(responseHeaders.HeaderConnection);
             var hasTransferEncoding = responseHeaders.HasTransferEncoding;
-            var transferCoding = FrameHeaders.GetFinalTransferCoding(responseHeaders.HeaderTransferEncoding);
+            var statusCode = StatusCode;
 
-            if (_keepAlive && hasConnection)
+            // Set whether response can have body
+            var canHaveBody = StatusCanHaveBody(statusCode) && Method != "HEAD";
+            _canHaveBody = canHaveBody;
+
+            if (keepAlive && hasConnection)
             {
-                _keepAlive = (connectionOptions & ConnectionOptions.KeepAlive) == ConnectionOptions.KeepAlive;
+                keepAlive = (FrameHeaders.ParseConnection(responseHeaders.HeaderConnection) & ConnectionOptions.KeepAlive) == ConnectionOptions.KeepAlive;
             }
 
             // https://tools.ietf.org/html/rfc7230#section-3.3.1
@@ -901,21 +902,18 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             // chunked is applied to a response payload body, the sender MUST either
             // apply chunked as the final transfer coding or terminate the message
             // by closing the connection.
-            if (hasTransferEncoding && transferCoding != TransferCoding.Chunked)
+            if (keepAlive && hasTransferEncoding && FrameHeaders.GetFinalTransferCoding(responseHeaders.HeaderTransferEncoding) != TransferCoding.Chunked)
             {
-                _keepAlive = false;
+                keepAlive = false;
             }
-
-            // Set whether response can have body
-            _canHaveBody = StatusCanHaveBody(StatusCode) && Method != "HEAD";
 
             // Don't set the Content-Length or Transfer-Encoding headers
             // automatically for HEAD requests or 204, 205, 304 responses.
-            if (_canHaveBody)
+            if (canHaveBody)
             {
                 if (!hasTransferEncoding && !responseHeaders.ContentLength.HasValue)
                 {
-                    if (appCompleted && StatusCode != StatusCodes.Status101SwitchingProtocols)
+                    if (appCompleted && statusCode != StatusCodes.Status101SwitchingProtocols)
                     {
                         // Since the app has completed and we are only now generating
                         // the headers we can safely set the Content-Length to 0.
@@ -930,14 +928,14 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                         //
                         // A server MUST NOT send a response containing Transfer-Encoding unless the corresponding
                         // request indicates HTTP/1.1 (or later).
-                        if (_httpVersion == Http.HttpVersion.Http11 && StatusCode != StatusCodes.Status101SwitchingProtocols)
+                        if (_httpVersion == Http.HttpVersion.Http11 && statusCode != StatusCodes.Status101SwitchingProtocols)
                         {
                             _autoChunk = true;
                             responseHeaders.SetRawTransferEncoding("chunked", _bytesTransferEncodingChunked);
                         }
                         else
                         {
-                            _keepAlive = false;
+                            keepAlive = false;
                         }
                     }
                 }
@@ -951,7 +949,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
 
             if (!hasConnection)
             {
-                if (!_keepAlive)
+                if (!keepAlive)
                 {
                     responseHeaders.SetRawConnection("close", _bytesConnectionClose);
                 }
@@ -972,12 +970,19 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                 responseHeaders.SetRawDate(dateHeaderValues.String, dateHeaderValues.Bytes);
             }
 
-            var writableBuffer = Output.Alloc();
-            writableBuffer.WriteFast(_bytesHttpVersion11);
-            writableBuffer.WriteFast(statusBytes);
-            responseHeaders.CopyTo(ref writableBuffer);
-            writableBuffer.WriteFast(_bytesEndHeaders);
-            writableBuffer.Commit();
+            _keepAlive = keepAlive;
+
+            OutputHeaders(responseHeaders, ReasonPhrases.ToStatusBytes(StatusCode, ReasonPhrase));
+        }
+
+        private void OutputHeaders(FrameResponseHeaders responseHeaders, byte[] statusBytes)
+        {
+            _writer.Initalize(Output.Alloc());
+            _writer.WriteFast(_bytesHttpVersion11);
+            _writer.WriteFast(statusBytes);
+            responseHeaders.CopyTo(_writer);
+            _writer.WriteFast(_bytesEndHeaders);
+            _writer.Commit();
         }
 
         public void ParseRequest(ReadableBuffer buffer, out ReadCursor consumed, out ReadCursor examined)
@@ -1065,10 +1070,16 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
 
         public bool StatusCanHaveBody(int statusCode)
         {
+            return statusCode == StatusCodes.Status200OK || StatusNot200OKCanHaveBody(statusCode);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private bool StatusNot200OKCanHaveBody(int statusCode)
+        {
             // List of status codes taken from Microsoft.Net.Http.Server.Response
-            return statusCode != StatusCodes.Status204NoContent &&
-                   statusCode != StatusCodes.Status205ResetContent &&
-                   statusCode != StatusCodes.Status304NotModified;
+            return (statusCode != StatusCodes.Status204NoContent &&
+                    statusCode != StatusCodes.Status205ResetContent &&
+                    statusCode != StatusCodes.Status304NotModified);
         }
 
         private void ThrowResponseAlreadyStartedException(string value)
@@ -1076,6 +1087,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             throw new InvalidOperationException($"{value} cannot be set, response has already started.");
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void RejectNonBodyTransferEncodingResponse(bool appCompleted)
         {
             var ex = new InvalidOperationException($"Transfer-Encoding set on a {StatusCode} non-body request.");
