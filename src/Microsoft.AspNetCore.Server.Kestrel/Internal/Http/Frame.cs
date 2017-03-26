@@ -1254,7 +1254,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             try
             {
                 // Read raw target before mutating memory.
-                rawTarget = target.GetAsciiStringNonNullCharacters();
+                rawTarget = GetAsciiStringNonNullCharacters(target);
 
                 if (pathEncoded)
                 {
@@ -1288,7 +1288,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                     }
                     else
                     {
-                        requestUrlPath = path.Slice(0, pathLength).GetAsciiStringNonNullCharacters();
+                        requestUrlPath = GetAsciiStringNonNullCharacters(path.Slice(0, pathLength));
                     }
                 }
             }
@@ -1297,7 +1297,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
                 RejectRequestTarget(target);
             }
 
-            QueryString = query.GetAsciiStringNonNullCharacters();
+            QueryString = GetAsciiStringNonNullCharacters(query);
             RawTarget = rawTarget;
             Path = requestUrlPath;
         }
@@ -1332,7 +1332,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             //
             // Allowed characters in the 'host + port' section of authority.
             // See https://tools.ietf.org/html/rfc3986#section-3.2
-            RawTarget = target.GetAsciiStringNonNullCharacters();
+            RawTarget = GetAsciiStringNonNullCharacters(target);
             Path = string.Empty;
             QueryString = string.Empty;
         }
@@ -1362,7 +1362,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             //    a server MUST accept the absolute-form in requests, even though
             //    HTTP/1.1 clients will only send them in requests to proxies.
 
-            RawTarget = target.GetAsciiStringNonNullCharacters();
+            RawTarget = GetAsciiStringNonNullCharacters(target);
 
             // Validation of absolute URIs is slow, but clients
             // should not be sending this form anyways, so perf optimization
@@ -1375,7 +1375,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
 
             Path = uri.LocalPath;
             // don't use uri.Query because we need the unescaped version
-            QueryString = query.GetAsciiStringNonNullCharacters();
+            QueryString = GetAsciiStringNonNullCharacters(query);
         }
 
         private unsafe static string GetUtf8String(Span<byte> path)
@@ -1395,9 +1395,66 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Internal.Http
             {
                 RejectRequest(RequestRejectionReason.TooManyHeaders);
             }
-            var valueString = value.GetAsciiStringNonNullCharacters();
+            var valueString = GetAsciiStringNonNullCharacters(value);
 
             FrameRequestHeaders.Append(name, valueString);
+        }
+
+        private const int StringCacheMaxSize = 8;
+        private StringCacheItem[] _stringCache = new StringCacheItem[StringCacheMaxSize];
+
+        private struct StringCacheItem
+        {
+            public byte[] AsciiData;
+            public string String;
+        }
+
+        public unsafe string GetAsciiStringNonNullCharacters(Span<byte> span)
+        {
+            if (span.IsEmpty)
+            {
+                return string.Empty;
+            }
+
+            var stringCache = _stringCache;
+            int i = 0;
+            for (; i < stringCache.Length; i++)
+            {
+                var ascii = stringCache[i].AsciiData;
+                if (ascii == null)
+                {
+                    break;
+                }
+
+                if (ascii.Length == span.Length && span.SequenceEqual(new ReadOnlySpan<byte>(stringCache[i].AsciiData)))
+                {
+                    return stringCache[i].String;
+                }
+            }
+
+            var asciiString = new string('\0', span.Length);
+
+            fixed (char* output = asciiString)
+            fixed (byte* buffer = &span.DangerousGetPinnableReference())
+            {
+                // This version if AsciiUtilities returns null if there are any null (0 byte) characters
+                // in the string
+                if (!AsciiUtilities.TryGetAsciiString(buffer, output, span.Length))
+                {
+                    throw new InvalidOperationException();
+                }
+            }
+
+            if (i < StringCacheMaxSize)
+            {
+                _stringCache[i] = new StringCacheItem()
+                {
+                    AsciiData = span.ToArray(),
+                    String = asciiString
+                };
+            }
+
+            return asciiString;
         }
     }
 }
