@@ -10,7 +10,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
     [StructLayout(LayoutKind.Sequential)]
     public unsafe struct RioRequestResults
     {
-        internal const int MaxResults = 3;
+        internal const int MaxResults = 12;
         private const int SizeOfResultInLongs = 3;
         private const int LengthOfLongArray = MaxResults * SizeOfResultInLongs;
 

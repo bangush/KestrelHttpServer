@@ -54,12 +54,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void CommitSend(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer, long requestCorrelation)
-        {
-            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.Defer, requestCorrelation), RioException.ActionType.Send);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void FlushSends(RioRequestQueue socketQueue)
         {
             ThrowIfErrored(NativeMethods.RioSendCommit(socketQueue, (IntPtr)null, 0, RioSendFlags.CommitOnly, 0), RioException.ActionType.Send);
@@ -68,7 +62,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Receive(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer)
         {
-            ThrowIfErrored(NativeMethods.RioReceive(socketQueue, ref rioBuffer, 1, RioReceiveFlags.None, 0), RioException.ActionType.Receive);
+            ThrowIfErrored(NativeMethods.RioReceive(socketQueue, ref rioBuffer, 1, RioReceiveFlags.None, 1), RioException.ActionType.Receive);
         }
 
 
@@ -242,38 +236,29 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         }
 
         public static RioRequestQueue CreateRequestQueue(
-                               RioCompletionQueue completionQueue,
-                               RioConnectedSocket socket,
-                               long connectionId
-                           )
-        {
-            return NativeMethods.RioCreateRequestQueue(
-                               socket,
-                               maxOutstandingReceive: 1,
-                               maxReceiveDataBuffers: 1,
-                               maxOutstandingSend: 2,
-                               maxSendDataBuffers: 1,
-                               receiveCq: completionQueue,
-                               sendCq: completionQueue,
-                               connectionCorrelation: connectionId);
-        }
-
-        public static RioRequestQueue CreateRequestQueue(
             RioConnectedSocket socket,
             RioCompletionQueue receiveQueue,
             RioCompletionQueue sendQueue,
             uint maxOutstandingSends
         )
         {
+
             var queue = NativeMethods.RioCreateRequestQueue(
                 socket,
-                maxOutstandingReceive: maxOutstandingSends,
+                maxOutstandingReceive: 1,
                 maxReceiveDataBuffers: 1,
                 maxOutstandingSend: maxOutstandingSends,
                 maxSendDataBuffers: 1,
                 receiveCq: receiveQueue,
                 sendCq: sendQueue,
                 connectionCorrelation: 0);
+
+            if (queue.IsNull)
+            {
+                var error = NativeMethods.WSAGetLastError();
+                NativeMethods.WSACleanup();
+                throw new Exception($"ERROR: RioCreateCompletionQueue returned {error}");
+            }
 
             return queue;
         }

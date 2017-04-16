@@ -11,6 +11,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         private IntPtr _handle;
 #pragma warning restore 0169, 0649
 
+        public bool IsNull => _handle == IntPtr.Zero;
+
         public void QueueSend(ref RioBufferSegment rioBuffer)
         {
             RioFunctions.QueueSend(this, ref rioBuffer);

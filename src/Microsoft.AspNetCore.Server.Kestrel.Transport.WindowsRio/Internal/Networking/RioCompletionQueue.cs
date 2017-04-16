@@ -23,10 +23,10 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             return RioFunctions.DequeueCompletions(this, ref results);
         }
 
-        public RioRequestQueue CreateRequestQueue(RioConnectedSocket socket, long connectionId)
-        {
-            return RioFunctions.CreateRequestQueue(this, socket, connectionId);
-        }
+        //public RioRequestQueue CreateRequestQueue(RioConnectedSocket socket, long connectionId)
+        //{
+        //    return RioFunctions.CreateRequestQueue(this, socket, connectionId);
+        //}
 
         //public static explicit operator IntPtr(RioCompletionQueue queue)
         //{
