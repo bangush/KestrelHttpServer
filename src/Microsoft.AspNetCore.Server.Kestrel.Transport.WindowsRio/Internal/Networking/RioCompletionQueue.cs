@@ -5,11 +5,9 @@ using System;
 
 namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 {
-    public struct RioCompletionQueue
+    public struct RioCompletionQueue : IDisposable
     {
-#pragma warning disable 0169, 0649
         private IntPtr _handle;
-#pragma warning restore 0169, 0649
 
         public bool IsNull => _handle == IntPtr.Zero;
 
@@ -21,6 +19,15 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         public uint Dequeue(ref RioRequestResults results)
         {
             return RioFunctions.DequeueCompletions(this, ref results);
+        }
+
+        public void Dispose()
+        {
+            if (!IsNull)
+            {
+                RioFunctions.CloseCompletionQueue(this);
+                _handle = IntPtr.Zero;
+            }
         }
 
         //public RioRequestQueue CreateRequestQueue(RioConnectedSocket socket, long connectionId)

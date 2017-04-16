@@ -81,6 +81,10 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 
         public void Dispose()
         {
+            _handle.Free();
+            WinThreadpool.CloseThreadpoolWait(_dataWait);
+            _dataQueue.Dispose();
+            _dataEvent.Dispose();
             _socket.Dispose();
         }
 

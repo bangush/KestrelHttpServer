@@ -5,11 +5,11 @@ using System;
 
 namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 {
-    public struct Event
+    public struct Event : IDisposable
     {
-#pragma warning disable 0169, 0649
         private IntPtr _handle;
-#pragma warning restore 0169, 0649
+
+        public bool IsNull => _handle == IntPtr.Zero;
 
         public static Event Create()
         {
@@ -19,6 +19,15 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         public RioCompletionQueue CreateCompletionQueue(uint queueSize)
         {
             return RioFunctions.CreateCompletionQueue(this, queueSize);
+        }
+
+        public void Dispose()
+        {
+            if (!IsNull)
+            {
+                RioFunctions.CloseEvent(this);
+                _handle = IntPtr.Zero;
+            }
         }
     }
 }

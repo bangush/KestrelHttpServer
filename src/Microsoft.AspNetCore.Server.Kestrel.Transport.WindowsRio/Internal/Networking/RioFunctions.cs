@@ -20,7 +20,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 
         public static Event CreateEvent()
         {
-            var vent = NativeMethods.WSACreateEvent();
+            var @event = NativeMethods.WSACreateEvent();
             //if (vent.IsNull)
             //{
             //    var error = GetLastError();
@@ -28,7 +28,18 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             //    throw new Exception($"ERROR: WSACreateEvent returned {error}");
             //}
 
-            return vent;
+            return @event;
+        }
+
+        public static void CloseEvent(Event @event)
+        {
+            NativeMethods.WSACloseEvent(@event);
+            //if (vent.IsNull)
+            //{
+            //    var error = GetLastError();
+            //    NativeMethods.WSACleanup();
+            //    throw new Exception($"ERROR: WSACreateEvent returned {error}");
+            //}
         }
 
         public static RioRegisteredBuffer RegisterBuffer(IntPtr dataBuffer, uint dataLength)
@@ -635,6 +646,11 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             [SuppressUnmanagedCodeSecurity]
             [DllImport(Ws232, SetLastError = true)]
             public static extern Event WSACreateEvent();
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport(Ws232, SetLastError = true)]
+            public static extern void WSACloseEvent(Event @event);
+            
 
             // Winsock functions
 
