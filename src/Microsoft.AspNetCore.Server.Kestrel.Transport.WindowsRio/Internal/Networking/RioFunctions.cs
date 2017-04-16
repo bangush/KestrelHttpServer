@@ -54,6 +54,12 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void SendCommit(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer)
+        {
+            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.None, -1), RioException.ActionType.Send);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public static void FlushSends(RioRequestQueue socketQueue)
         {
             ThrowIfErrored(NativeMethods.RioSendCommit(socketQueue, (IntPtr)null, 0, RioSendFlags.CommitOnly, 0), RioException.ActionType.Send);

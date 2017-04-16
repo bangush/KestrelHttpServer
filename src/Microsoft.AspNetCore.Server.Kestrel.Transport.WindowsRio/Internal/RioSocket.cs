@@ -110,6 +110,69 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             await _sendGate;
         }
 
+        public ReadCursor SendPartial(ReadableBuffer buffer)
+        {
+            var totalBytes = 0;
+
+            var enumerator = buffer.GetEnumerator();
+            if (enumerator.MoveNext())
+            {
+                var current = enumerator.Current;
+                while (enumerator.MoveNext())
+                {
+                    var next = enumerator.Current;
+                    var segment = _bufferMapper.GetSegmentFromBuffer(current);
+                    current = next;
+
+                    totalBytes += current.Length;
+
+                    _outstandingSends++;
+                    _requestQueue.SendCommit(ref segment);
+                }
+            }
+
+            return totalBytes == 0 ? buffer.Start : buffer.Move(buffer.Start, totalBytes);
+        }
+
+        public void SendComplete(ReadableBuffer buffer)
+        {
+            if (buffer.IsSingleSpan)
+            {
+                var segment = _bufferMapper.GetSegmentFromBuffer(buffer.First);
+                _outstandingSends++;
+                _requestQueue.SendCommit(ref segment);
+            }
+            else
+            {
+                SendCompleteMulti(buffer);
+            }
+        }
+
+        private void SendCompleteMulti(ReadableBuffer buffer)
+        {
+            var enumerator = buffer.GetEnumerator();
+            if (enumerator.MoveNext())
+            {
+                var current = enumerator.Current;
+
+                RioBufferSegment segment;
+                while (enumerator.MoveNext())
+                {
+                    var next = enumerator.Current;
+
+                    segment = _bufferMapper.GetSegmentFromBuffer(current);
+                    current = next;
+
+                    _outstandingSends++;
+                    _requestQueue.QueueSend(ref segment);
+                }
+
+                segment = _bufferMapper.GetSegmentFromBuffer(current);
+                _outstandingSends++;
+                _requestQueue.SendCommit(ref segment);
+            }
+        }
+
         public async Task SendMultiAsync(ReadableBuffer buffer)
         {
             var enumerator = buffer.GetEnumerator();
@@ -147,48 +210,24 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             }
         }
 
+        private AutoResetGate<SocketState> _readyToSend = new AutoResetGate<SocketState>();
+
+        public AutoResetGate<SocketState> ReadyToSend()
+        {
+            return _readyToSend;
+        }
+
         public AutoResetGate<ReceiveResult> ReceiveAsync(Buffer<byte> buffer)
         {
             var receiveBufferSeg = _bufferMapper.GetSegmentFromBuffer(buffer);
             _requestQueue.Receive(ref receiveBufferSeg);
-
-            //Post();
 
             return _receiveGate;
         }
 
         private void OnData()
         {
-            int totalSends = 0;
-            bool isEnd = false;
-            bool wasData;
-
-            do
-            {
-                isEnd &= GetData(out var sends, out wasData);
-                totalSends += sends;
-            } while (wasData);
-
-            if (totalSends > 0)
-            {
-                _requestQueue.FlushSends();
-            }
-
-            if (!isEnd)
-            {
-                _dataQueue.Notify();
-                WinThreadpool.SetThreadpoolWait(_dataWait, _dataEvent);
-            }
-        }
-
-        private bool GetData(out int outstandingSends, out bool wasData)
-        {
-            var totalReceiveTransferred = 0;
-            var totalReceiveCount = 0;
-            var totalSendTransferred = 0;
-            var totalSendCount = 0;
             var isEnd = false;
-            wasData = false;
 
             ref var results = ref _rioResults;
             while (true)
@@ -199,7 +238,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                     break;
                 }
 
-
+                var sendCount = 0;
                 for (var i = 0; i < count; i++)
                 {
                     ref var result = ref results[i];
@@ -207,53 +246,36 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                     if (result.RequestCorrelation > 0)
                     {
                         // Receive
-                        totalReceiveCount++;
-                        var bytesTransferred = (int) result.BytesTransferred;
-                        if (bytesTransferred > 0)
-                        {
-                            totalReceiveTransferred += bytesTransferred;
-                        }
-                        else
+                        var byteReceived = (int) result.BytesTransferred;
+                        if (byteReceived == 0)
                         {
                             isEnd = true;
                         }
+                        _receiveGate.Open(new ReceiveResult
+                        {
+                            BytesReceived = byteReceived,
+                            IsEnd = isEnd
+                        });
                     }
                     else
                     {
-                        totalSendCount++;
-                        // Send
-                        var bytesTransferred = (int) result.BytesTransferred;
-                        if (bytesTransferred > 0)
-                        {
-                            totalSendTransferred += bytesTransferred;
-                        }
-                        else
-                        {
-                            //isEnd = true;
-                        }
+                        sendCount++;
                     }
+                }
+
+                if (sendCount > 0)
+                {
+                    _readyToSend.Open(new SocketState { InputConsumed = false });
                 }
             }
 
-            outstandingSends = (_outstandingSends -= totalSendCount);
+            _readyToSend.Open(new SocketState { InputConsumed = true });
 
-            if (totalSendCount > 0 && outstandingSends < _maxOutstandingSends)
+            if (!isEnd)
             {
-                wasData = true;
-                _sendGate.Open();
+                _dataQueue.Notify();
+                WinThreadpool.SetThreadpoolWait(_dataWait, _dataEvent);
             }
-
-            if (totalReceiveCount > 0)
-            {
-                wasData = true;
-                _receiveGate.Open(new ReceiveResult
-                {
-                    BytesReceived = totalReceiveTransferred,
-                    IsEnd = isEnd
-                });
-            }
-
-            return isEnd;
         }
 
         private void Post()
@@ -262,6 +284,12 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             WinThreadpool.SetThreadpoolWait(_dataWait, _dataEvent);
         }
     }
+
+    public struct SocketState
+    {
+        public bool InputConsumed;
+    }
+
     public struct ReceiveResult
     {
         public int BytesReceived;

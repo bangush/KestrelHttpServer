@@ -134,32 +134,50 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio
             {
                 while (true)
                 {
-                    // Wait for data to write from the pipe producer
-                    var result = await _output.ReadAsync();
-                    var buffer = result.Buffer;
+                    var sendResult = await _socket.ReadyToSend();
 
-                    try
+                    if (_output.TryRead(out var readResult))
                     {
-                        if (!buffer.IsEmpty)
+                        var buffer = readResult.Buffer;
+                        var consumed = buffer.End;
+                        try
                         {
-                            await _socket.SendAsync(buffer);
-                        }
+                            if (sendResult.InputConsumed || readResult.IsCancelled || readResult.IsCompleted)
+                            {
+                                if (!buffer.IsEmpty)
+                                {
+                                    _socket.SendComplete(buffer);
+                                }
 
-                        if (result.IsCancelled)
-                        {
-                            // Send a FIN
-                            _socket.Shutdown(SocketShutdown.Send);
-                            break;
-                        }
+                                if (readResult.IsCancelled)
+                                {
+                                    // Send a FIN
+                                    _socket.Shutdown(SocketShutdown.Send);
+                                    break;
+                                }
 
-                        if (buffer.IsEmpty && result.IsCompleted)
-                        {
-                            break;
+                                if (buffer.IsEmpty && readResult.IsCompleted)
+                                {
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                if (!buffer.IsEmpty && !buffer.IsSingleSpan)
+                                {
+                                    consumed = _socket.SendPartial(buffer);
+                                    _output.Advance(consumed);
+                                }
+                                else
+                                {
+                                    consumed = buffer.Start;
+                                }
+                            }
                         }
-                    }
-                    finally
-                    {
-                        _output.Advance(buffer.End);
+                        finally
+                        {
+                            _output.Advance(consumed);
+                        }
                     }
                 }
 

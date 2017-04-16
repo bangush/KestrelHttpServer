@@ -23,6 +23,11 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             RioFunctions.Send(this, ref rioBuffer);
         }
 
+        public void SendCommit(ref RioBufferSegment rioBuffer)
+        {
+            RioFunctions.SendCommit(this, ref rioBuffer);
+        }
+
         public void FlushSends()
         {
             RioFunctions.FlushSends(this);
