@@ -122,16 +122,16 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                 {
                     var next = enumerator.Current;
                     var segment = _bufferMapper.GetSegmentFromBuffer(current);
-                    current = next;
-
                     totalBytes += current.Length;
+
+                    current = next;
 
                     _outstandingSends++;
                     _requestQueue.SendCommit(ref segment);
                 }
             }
 
-            return totalBytes == 0 ? buffer.Start : buffer.Move(buffer.Start, totalBytes);
+            return buffer.Move(buffer.Start, totalBytes);
         }
 
         public void SendComplete(ReadableBuffer buffer)

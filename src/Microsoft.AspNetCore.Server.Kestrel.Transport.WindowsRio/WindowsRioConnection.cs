@@ -161,17 +161,13 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio
                                     break;
                                 }
                             }
+                            else if (!buffer.IsEmpty && !buffer.IsSingleSpan)
+                            {
+                                consumed = _socket.SendPartial(buffer);
+                            }
                             else
                             {
-                                if (!buffer.IsEmpty && !buffer.IsSingleSpan)
-                                {
-                                    consumed = _socket.SendPartial(buffer);
-                                    _output.Advance(consumed);
-                                }
-                                else
-                                {
-                                    consumed = buffer.Start;
-                                }
+                                consumed = buffer.Start;
                             }
                         }
                         finally
