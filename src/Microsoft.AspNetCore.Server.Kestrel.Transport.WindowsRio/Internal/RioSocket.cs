@@ -24,8 +24,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 
         private RioConnectedSocket _socket;
 
-        private ManualResetGate _sendGate = new ManualResetGate();
-
         private Event _dataEvent;
 
         private RioCompletionQueue _dataQueue;
@@ -37,6 +35,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         private WinThreadpoolWait _dataWait;
 
         private AutoResetGate<ReceiveResult> _receiveGate = new AutoResetGate<ReceiveResult>();
+        private AutoResetGate<SocketState> _readyToSend = new AutoResetGate<SocketState>();
         private RioRequestResults _rioResults;
 
         private const int _maxOutstandingSends = 20;
@@ -65,7 +64,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 
             _dataWait = WinThreadpool.CreateThreadpoolWait(_dataCallback, address);
 
-            _sendGate.Open();
             Post();
         }
 
@@ -86,32 +84,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             _dataQueue.Dispose();
             _dataEvent.Dispose();
             _socket.Dispose();
-        }
-
-        public Task SendAsync(ReadableBuffer buffer)
-        {
-            if (buffer.IsSingleSpan)
-            {
-                var segment = _bufferMapper.GetSegmentFromBuffer(buffer.First);
-                _requestQueue.Send(ref segment);
-            }
-            else
-            {
-                return SendMultiAsync(buffer);
-            }
-
-            if ((++_outstandingSends) == _maxOutstandingSends)
-            {
-                _sendGate.Close();
-                return AwaitSendGate();
-            }
-
-            return TaskCache.CompletedTask;
-        }
-
-        private async Task AwaitSendGate()
-        {
-            await _sendGate;
         }
 
         public ReadCursor SendPartial(ReadableBuffer buffer)
@@ -177,45 +149,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             }
         }
 
-        public async Task SendMultiAsync(ReadableBuffer buffer)
-        {
-            var enumerator = buffer.GetEnumerator();
-            if (enumerator.MoveNext())
-            {
-                var current = enumerator.Current;
-
-                RioBufferSegment segment;
-                while (enumerator.MoveNext())
-                {
-                    var next = enumerator.Current;
-
-                    segment = _bufferMapper.GetSegmentFromBuffer(current);
-                    current = next;
-
-                    if ((++_outstandingSends) < _maxOutstandingSends)
-                    {
-                        _requestQueue.QueueSend(ref segment);
-                    }
-                    else
-                    {
-                        _sendGate.Close();
-                        _requestQueue.Send(ref segment);
-                        await AwaitSendGate();
-                    }
-                }
-
-                segment = _bufferMapper.GetSegmentFromBuffer(current);
-                _requestQueue.Send(ref segment);
-                if ((++_outstandingSends) == _maxOutstandingSends)
-                {
-                    _sendGate.Close();
-                    await AwaitSendGate();
-                }
-            }
-        }
-
-        private AutoResetGate<SocketState> _readyToSend = new AutoResetGate<SocketState>();
-
         public AutoResetGate<SocketState> ReadyToSend()
         {
             return _readyToSend;
@@ -246,6 +179,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                 for (var i = 0; i < count; i++)
                 {
                     ref var result = ref results[i];
+
+                    // TODO: result.Status
 
                     if (result.RequestCorrelation > 0)
                     {
