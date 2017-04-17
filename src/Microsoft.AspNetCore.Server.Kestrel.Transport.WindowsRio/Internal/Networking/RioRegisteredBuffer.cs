@@ -9,6 +9,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
     {
         private IntPtr _handle;
 
+        public bool IsNull => _handle == IntPtr.Zero;
+
         public static RioRegisteredBuffer Create(IntPtr dataBuffer, uint dataLength)
         {
             return RioFunctions.RegisterBuffer(dataBuffer, dataLength);

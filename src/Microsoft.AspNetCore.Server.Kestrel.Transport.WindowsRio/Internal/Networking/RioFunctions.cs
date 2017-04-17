@@ -21,30 +21,20 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         public static Event CreateEvent()
         {
             var @event = NativeMethods.WSACreateEvent();
-            //if (vent.IsNull)
-            //{
-            //    var error = GetLastError();
-            //    NativeMethods.WSACleanup();
-            //    throw new Exception($"ERROR: WSACreateEvent returned {error}");
-            //}
-
+            ThrowIfFailed(@event.IsNull);
             return @event;
         }
 
         public static void CloseEvent(Event @event)
         {
             NativeMethods.WSACloseEvent(@event);
-            //if (vent.IsNull)
-            //{
-            //    var error = GetLastError();
-            //    NativeMethods.WSACleanup();
-            //    throw new Exception($"ERROR: WSACreateEvent returned {error}");
-            //}
         }
 
         public static RioRegisteredBuffer RegisterBuffer(IntPtr dataBuffer, uint dataLength)
         {
-            return NativeMethods.RioRegisterBuffer(dataBuffer, dataLength);
+            var buffer = NativeMethods.RioRegisterBuffer(dataBuffer, dataLength);
+            ThrowIfFailed(buffer.IsNull);
+            return buffer;
         }
 
         public static void DeregisterBuffer(RioRegisteredBuffer buffer)
@@ -55,48 +45,44 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void QueueSend(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer)
         {
-            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.Defer | RioSendFlags.DontNotify, -1), RioException.ActionType.Send);
+            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.Defer | RioSendFlags.DontNotify, -1));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Send(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer)
         {
-            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.Defer, -1), RioException.ActionType.Send);
+            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.Defer, -1));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void SendCommit(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer)
         {
-            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.None, -1), RioException.ActionType.Send);
+            ThrowIfErrored(NativeMethods.RioSend(socketQueue, ref rioBuffer, 1, RioSendFlags.None, -1));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void FlushSends(RioRequestQueue socketQueue)
         {
-            ThrowIfErrored(NativeMethods.RioSendCommit(socketQueue, (IntPtr)null, 0, RioSendFlags.CommitOnly, 0), RioException.ActionType.Send);
+            ThrowIfErrored(NativeMethods.RioSendCommit(socketQueue, (IntPtr)null, 0, RioSendFlags.CommitOnly, 0));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Receive(RioRequestQueue socketQueue, ref RioBufferSegment rioBuffer)
         {
-            ThrowIfErrored(NativeMethods.RioReceive(socketQueue, ref rioBuffer, 1, RioReceiveFlags.None, 1), RioException.ActionType.Receive);
+            ThrowIfErrored(NativeMethods.RioReceive(socketQueue, ref rioBuffer, 1, RioReceiveFlags.None, 1));
         }
 
 
         public static RioListenSocket CreateListenSocket()
         {
             var socket = NativeMethods.WSASocket(AddressFamilies.Internet, SocketType.Stream, Protocol.IpProtocolTcp, IntPtr.Zero, 0, SocketFlags.RegisteredIO);
-            if (socket.IsNull)
-            {
-                var error = NativeMethods.WSAGetLastError();
-                NativeMethods.WSACleanup();
-                throw new Exception(string.Format("ERROR: WSASocket returned {0}", error));
-            }
+
+            ThrowIfFailed(socket.IsNull);
 
             return socket;
         }
 
-        public static unsafe void SetTcpNodelay(RioListenSocket socket, bool enable)
+        public static void SetTcpNodelay(RioListenSocket socket, bool enable)
         {
             const int TcpNodelay = 0x0001;
             const int IPPROTO_TCP = 6;
@@ -106,11 +92,11 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             {
                 value = -1;
             }
-            NativeMethods.setsockopt(socket, IPPROTO_TCP, TcpNodelay, (char*)&value, 4);
+            ThrowIfErrored(NativeMethods.setsockopt(socket, IPPROTO_TCP, TcpNodelay, (char*)&value, 4));
         }
 
 
-        public static unsafe void SetTcpNodelay(RioConnectedSocket socket, bool enable)
+        public static void SetTcpNodelay(RioConnectedSocket socket, bool enable)
         {
             const int TcpNodelay = 0x0001;
             const int IPPROTO_TCP = 6;
@@ -120,14 +106,14 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             {
                 value = -1;
             }
-            NativeMethods.setsockopt(socket, IPPROTO_TCP, TcpNodelay, (char*)&value, 4);
+            ThrowIfErrored(NativeMethods.setsockopt(socket, IPPROTO_TCP, TcpNodelay, (char*)&value, 4));
         }
 
         public static IPEndPoint GetSockIPEndPoint(RioConnectedSocket socket)
         {
             SockAddr socketAddress;
             int namelen = Marshal.SizeOf<SockAddr>();
-            ThrowIfErrored(NativeMethods.getsockname(socket, out socketAddress, ref namelen), RioException.ActionType.GetPeerIPEndPoint);
+            ThrowIfErrored(NativeMethods.getsockname(socket, out socketAddress, ref namelen));
 
             return socketAddress.GetIPEndPoint();
         }
@@ -136,7 +122,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         {
             SockAddr socketAddress;
             int namelen = Marshal.SizeOf<SockAddr>();
-            ThrowIfErrored(NativeMethods.getsockname(socket, out socketAddress, ref namelen), RioException.ActionType.GetPeerIPEndPoint);
+            ThrowIfErrored(NativeMethods.getsockname(socket, out socketAddress, ref namelen));
 
             return socketAddress.GetIPEndPoint();
         }
@@ -145,7 +131,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         {
             SockAddr socketAddress;
             int namelen = Marshal.SizeOf<SockAddr>();
-            ThrowIfErrored(NativeMethods.getpeername(socket, out socketAddress, ref namelen), RioException.ActionType.GetPeerIPEndPoint);
+            ThrowIfErrored(NativeMethods.getpeername(socket, out socketAddress, ref namelen));
 
             return socketAddress.GetIPEndPoint();
         }
@@ -154,12 +140,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         {
             var acceptSocket = NativeMethods.accept(socket, IntPtr.Zero, 0);
 
-            if (acceptSocket.IsInvalid)
-            {
-                var error = NativeMethods.WSAGetLastError();
-                NativeMethods.WSACleanup();
-                throw new Exception($"accept failed with {error}");
-            }
+            ThrowIfFailed(acceptSocket.IsNull || acceptSocket.IsInvalid);
 
             return acceptSocket;
         }
@@ -168,36 +149,22 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         {
             var socketAddress = IPEndPointExtensions.Serialize(endPoint);
 
-            var result = NativeMethods.bind(socket, ref socketAddress.Buffer[0], socketAddress.Size);
-
-            if (result != 0)
-            {
-                var error = NativeMethods.WSAGetLastError();
-                NativeMethods.WSACleanup();
-                throw new Exception($"bind failed with {error}");
-            }
+            ThrowIfErrored(NativeMethods.bind(socket, ref socketAddress.Buffer[0], socketAddress.Size));
         }
 
         public static void Listen(RioListenSocket socket, int listenBacklog)
         {
-            var result = NativeMethods.listen(socket, listenBacklog);
-
-            if (result != 0)
-            {
-                var error = NativeMethods.WSAGetLastError();
-                NativeMethods.WSACleanup();
-                throw new Exception($"listen failed with {error}");
-            }
+            ThrowIfErrored(NativeMethods.listen(socket, listenBacklog));
         }
 
         public static void CloseSocket(RioListenSocket socket)
         {
-            ThrowIfErrored(NativeMethods.closesocket(socket), RioException.ActionType.CloseSocket);
+            ThrowIfErrored(NativeMethods.closesocket(socket));
         }
 
         public static void CloseSocket(RioConnectedSocket socket)
         {
-            ThrowIfErrored(NativeMethods.closesocket(socket), RioException.ActionType.CloseSocket);
+            ThrowIfErrored(NativeMethods.closesocket(socket));
         }
 
         public enum NotificationCompletionType : int
@@ -236,13 +203,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             };
 
             var completionQueue = NativeMethods.RioCreateCompletionQueueEvent(queueSize, completionMethod);
-
-            if (completionQueue.IsNull)
-            {
-                var error = NativeMethods.WSAGetLastError();
-                NativeMethods.WSACleanup();
-                throw new Exception($"ERROR: RioCreateCompletionQueue returned {error}");
-            }
+            ThrowIfFailed(completionQueue.IsNull);
 
             return completionQueue;
         }
@@ -270,12 +231,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                 sendCq: sendQueue,
                 connectionCorrelation: 0);
 
-            if (queue.IsNull)
-            {
-                var error = NativeMethods.WSAGetLastError();
-                NativeMethods.WSACleanup();
-                throw new Exception($"ERROR: RioCreateCompletionQueue returned {error}");
-            }
+            ThrowIfFailed(queue.IsNull);
 
             return queue;
         }
@@ -288,81 +244,79 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Notify(RioCompletionQueue completionQueue)
         {
-            ThrowIfErrored(NativeMethods.RioNotify(completionQueue), RioException.ActionType.Notify);
+            ThrowIfErrored(NativeMethods.RioNotify(completionQueue));
         }
 
         public static void ResizeCompletionQueue(RioCompletionQueue completionQueue, uint queueSize)
         {
-            ThrowIfErrored(NativeMethods.RioResizeCompletionQueue(completionQueue, queueSize), RioException.ActionType.ResizeCompletionQueue);
+            ThrowIfErrored(NativeMethods.RioResizeCompletionQueue(completionQueue, queueSize));
         }
 
         public static void ResizeRequestQueue(RioRequestQueue rq, uint maxOutstandingReceive, uint maxOutstandingSend)
         {
-            ThrowIfErrored(NativeMethods.RioResizeRequestQueue(rq, maxOutstandingReceive, maxOutstandingSend), RioException.ActionType.ResizeRequestQueue);
+            ThrowIfErrored(NativeMethods.RioResizeRequestQueue(rq, maxOutstandingReceive, maxOutstandingSend));
         }
 
 
         public static void Shutdown(RioConnectedSocket s, SocketShutdown how)
         {
-            ThrowIfErrored(NativeMethods.shutdown(s, how), RioException.ActionType.ResizeRequestQueue);
+            ThrowIfErrored(NativeMethods.shutdown(s, how));
         }
 
-        private static void ThrowIfErrored(int status, RioException.ActionType actionType)
+        private static void ThrowIfErrored(int status)
         {
             // Note: method is explicitly small so the success case is easily inlined
             if (status != 0)
             {
-                //WSAEINVAL
-                //WSAEALREADY
-                ThrowError(actionType);
+                ThrowError(status);
             }
         }
 
-        private static void ThrowIfErrored(bool success, RioException.ActionType actionType)
+        private static void ThrowIfErrored(bool success)
         {
             // Note: method is explicitly small so the success case is easily inlined
             if (!success)
             {
-                ThrowError(actionType);
+                ThrowError();
             }
         }
-        private static void ThrowError(RioException.ActionType actionType)
+
+        private static void ThrowIfFailed(bool failed)
+        {
+            // Note: method is explicitly small so the success case is easily inlined
+            if (failed)
+            {
+                ThrowError();
+            }
+        }
+
+        private static void ThrowError()
         {
             // Note: only has one throw block so it will marked as "Does not return" by the jit
             // and not inlined into previous function, while also marking as a function
             // that does not need cpu register prep to call (see: https://github.com/dotnet/coreclr/pull/6103)
-            throw GetError(actionType);
+            throw GetError();
+        }
+
+        private static void ThrowError(int errorNo)
+        {
+            // Note: only has one throw block so it will marked as "Does not return" by the jit
+            // and not inlined into previous function, while also marking as a function
+            // that does not need cpu register prep to call (see: https://github.com/dotnet/coreclr/pull/6103)
+            throw GetError(errorNo);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static RioException GetError(RioException.ActionType actionType)
+        private static SocketException GetError()
         {
             var errorNo = NativeMethods.WSAGetLastError();
+            throw new SocketException(errorNo);
+        }
 
-            string errorMessage;
-            switch (errorNo)
-            {
-                case 10014: // WSAEFAULT
-                    errorMessage = $"{actionType} failed: WSAEFAULT - The system detected an invalid pointer address in attempting to use a pointer argument in a call.";
-                    break;
-                case 10022: // WSAEINVAL
-                    errorMessage = $"{actionType} failed: WSAEINVAL -  the SocketQueue parameter is not valid, the Flags parameter contains an value not valid for a send operation, or the integrity of the completion queue has been compromised.";
-                    break;
-                case 10055: // WSAENOBUFS
-                    errorMessage = $"{actionType} failed: WSAENOBUFS - Sufficient memory could not be allocated, the I/O completion queue associated with the SocketQueue parameter is full.";
-                    break;
-                case 997: // WSA_IO_PENDING
-                    errorMessage = $"{actionType} failed? WSA_IO_PENDING - The operation has been successfully initiated and the completion will be queued at a later time.";
-                    break;
-                case 995: // WSA_OPERATION_ABORTED
-                    errorMessage = $"{actionType} failed. WSA_OPERATION_ABORTED - The operation has been canceled while the receive operation was pending.";
-                    break;
-                default:
-                    errorMessage = $"{actionType} failed:  WSA error code {errorNo}";
-                    break;
-            }
-
-            throw new RioException(errorMessage);
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static SocketException GetError(int errorNo)
+        {
+            throw new SocketException(errorNo);
         }
 
         [Flags]
@@ -552,14 +506,14 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                 // triggers the static .cctor
             }
 
-            static unsafe NativeMethods()
+            static NativeMethods()
             {
                 var version = new Version(2, 2);
                 var result = NativeMethods.WSAStartup((short)version.Raw, out var wsaData);
                 if (result != SocketError.Success)
                 {
                     var error = NativeMethods.WSAGetLastError();
-                    throw new Exception(string.Format("ERROR: WSAStartup returned {0}", error));
+                    throw new SocketException(error); ;
                 }
 
                 var socket = CreateListenSocket();
@@ -573,28 +527,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
                 const uint IocWs2 = 0x08000000;
                 const uint SioGetMultipleExtensionFunctionPointer = IOC_INOUT | IocWs2 | 36;
 
-
-                //int True = -1;
-
-                //int result = NativeMethods.setsockopt(socket, IPPROTO_TCP, TcpNodelay, (char*)&True, 4);
-                //if (result != 0)
-                //{
-                //    var error = WSAGetLastError();
-                //    WSACleanup();
-                //    throw new Exception($"ERROR: setsockopt TCP_NODELAY returned {error}");
-                //}
-
-                //result = WSAIoctlGeneral(socket, SioLoopbackFastPath,
-                //                    &True, 4, null, 0,
-                //                    out dwBytes, IntPtr.Zero, IntPtr.Zero);
-
-                //if (result != 0)
-                //{
-                //    var error = WSAGetLastError();
-                //    WSACleanup();
-                //    throw new Exception($"ERROR: WSAIoctl SIO_LOOPBACK_FAST_PATH returned {error}");
-                //}
-
                 result = (SocketError)NativeMethods.WSAIoctl(socket, SioGetMultipleExtensionFunctionPointer,
                     ref rioFunctionsTableId, 16, ref rio,
                     sizeof(RioExtensionFunctionTable),
@@ -602,9 +534,10 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
 
                 if (result != SocketError.Success)
                 {
+                    
                     var error = NativeMethods.WSAGetLastError();
                     NativeMethods.WSACleanup();
-                    throw new Exception($"ERROR: RIOInitalize returned {error}");
+                    throw new SocketException(error);
                 }
 
                 RioRegisterBuffer = Marshal.GetDelegateForFunctionPointer<NativeDelegates.RioRegisterBuffer>(rio.RIORegisterBuffer);
@@ -668,7 +601,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Transport.WindowsRio.Internal
             );
 
             [DllImport(Ws232, SetLastError = true, EntryPoint = "WSAIoctl")]
-            private unsafe static extern int WSAIoctlGeneral(
+            private static extern int WSAIoctlGeneral(
               [In] IntPtr socket,
               [In] int dwIoControlCode,
               [In] int* lpvInBuffer,
