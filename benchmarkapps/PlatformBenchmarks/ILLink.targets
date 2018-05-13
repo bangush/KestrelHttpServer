@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TargetsTriggeredByCompilation>
+      $(TargetsTriggeredByCompilation);
+      ILLinkTrimAssembly
+    </TargetsTriggeredByCompilation>
+    <RunningOnCore Condition="'$(MSBuildRuntimeType)' == 'core'">true</RunningOnCore>
+  </PropertyGroup>
+
+
+  <!-- Inputs and outputs of ILLinkTrimAssembly -->
+  <PropertyGroup>
+    <ILLinkTasksPath Condition="'$(ILLinkTasksPath)' == '' And '$(RunningOnCore)' == 'true'">$(NuGetPackageRoot)/ILLink.Tasks/$(ILLinkTasksPackageVersion)/tools/netcoreapp2.0/ILLink.Tasks.dll</ILLinkTasksPath>
+    <ILLinkTasksPath Condition="'$(ILLinkTasksPath)' == '' And '$(RunningOnCore)' != 'true'">$(NuGetPackageRoot)/ILLink.Tasks/$(ILLinkTasksPackageVersion)/tools/net46/ILLink.Tasks.dll</ILLinkTasksPath>
+  </PropertyGroup>
+
+  <UsingTask TaskName="ILLink" AssemblyFile="$(ILLinkTasksPath)" />
+  <Target Name="ILLinkTrimAssembly">
+    <PropertyGroup>
+
+      <!-- Inputs and outputs of ILLinkTrimAssembly -->
+      <ILLinkTrimAssemblyPath>$(IntermediateOutputPath)$(TargetName)$(TargetExt)</ILLinkTrimAssemblyPath>
+      <ILLinkTrimAssemblySymbols>$(IntermediateOutputPath)$(TargetName).pdb</ILLinkTrimAssemblySymbols>
+      <ILLinkTrimInputPath>$(IntermediateOutputPath)PreTrim/</ILLinkTrimInputPath>
+      <ILLinkTrimInputAssembly>$(ILLinkTrimInputPath)$(TargetName)$(TargetExt)</ILLinkTrimInputAssembly>
+      <ILLinkTrimInputSymbols>$(ILLinkTrimInputPath)$(TargetName).pdb</ILLinkTrimInputSymbols>
+      <ILLinkTrimOutputPath>$(IntermediateOutputPath)</ILLinkTrimOutputPath>
+
+      <ILLinkTrimXml Condition="'$(ILLinkTrimXml)' == '' AND Exists('$(MSBuildProjectDirectory)/ILLinkTrim.xml')">$(MSBuildProjectDirectory)/ILLinkTrim.xml</ILLinkTrimXml>
+
+      <!-- if building a PDB, tell illink to rewrite the symbols file -->
+      <ILLinkRewritePDBs Condition="'$(ILLinkRewritePDBs)' == '' AND '$(DebugSymbols)' != 'false'">true</ILLinkRewritePDBs>
+
+      <ILLinkArgs>$(ILLinkArgs)-r $(TargetName)</ILLinkArgs>
+      <!-- default action for core assemblies -->
+      <ILLinkArgs>$(ILLinkArgs) -c skip</ILLinkArgs>
+      <!-- trim the target assembly -->
+      <ILLinkArgs>$(ILLinkArgs) -p link $(TargetName)</ILLinkArgs>
+      <!-- keep type-forward assemblies (facades) -->
+      <ILLinkArgs>$(ILLinkArgs) -t</ILLinkArgs>
+      <ILLinkArgs Condition="'$(ILLinkRewritePDBs)' == 'true' AND Exists('$(ILLinkTrimAssemblySymbols)')">$(ILLinkArgs) -b true</ILLinkArgs>
+      <!-- keep types and members required by Debugger-related attributes -->
+      <ILLinkArgs>$(ILLinkArgs) -v true</ILLinkArgs>
+      <!-- don't remove the embedded root xml resource since ILLink may run again on the assembly -->
+      <ILLinkArgs>$(ILLinkArgs) --strip-resources false</ILLinkArgs>
+      <!-- reflection heuristics to apply -->
+      <ILLinkArgs>$(ILLinkArgs) -h LdtokenTypeMethods,InstanceConstructors</ILLinkArgs>
+      <!-- ignore unresolved references -->
+      <ILLinkArgs>$(ILLinkArgs) --skip-unresolved true</ILLinkArgs>
+      <ILLinkArgs>$(ILLinkArgs) --verbose</ILLinkArgs>
+
+      <!-- Keep Startup -->
+      <ILLinkRootDescriptorFiles>ILLinkTrim.xml</ILLinkRootDescriptorFiles>
+    </PropertyGroup>
+
+
+    <ItemGroup>
+      <_DependencyDirectoriesTemp Include="@(ReferencePath->'%(RootDir)%(Directory)')" />
+      <!-- Remove duplicate directories by batching over them -->
+      <!-- Add project references first to give precedence to project-specific files -->
+      <_DependencyDirectories Condition="'%(_DependencyDirectoriesTemp.ReferenceSourceTarget)'=='ProjectReference'" Include="%(_DependencyDirectoriesTemp.Identity)" />
+      <_DependencyDirectories Condition="'%(_DependencyDirectoriesTemp.ReferenceSourceTarget)'!='ProjectReference'" Include="%(_DependencyDirectoriesTemp.Identity)" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(ILLinkTrimInputPath)" />
+
+
+    <!-- Move the assembly into a subdirectory for ILLink -->
+    <Move SourceFiles="$(ILLinkTrimAssemblyPath)" DestinationFolder="$(ILLinkTrimInputPath)" />
+
+    <!-- Move the PDB into a subdirectory for ILLink if we are rewriting PDBs -->
+    <Move SourceFiles="$(ILLinkTrimAssemblySymbols)" DestinationFolder="$(ILLinkTrimInputPath)" Condition="'$(ILLinkRewritePDBs)' == 'true' AND Exists('$(ILLinkTrimAssemblySymbols)')" />
+
+    <ILLink AssemblyPaths="$(ILLinkTrimInputAssembly);@(_DependencyDirectories)" RootAssemblyNames="" RootDescriptorFiles="$(ILLinkRootDescriptorFiles)" OutputDirectory="$(ILLinkTrimOutputPath)" ClearInitLocals="$(ILLinkClearInitLocals)" ClearInitLocalsAssemblies="$(TargetName)" ExtraArgs="$(ILLinkArgs)" />
+  </Target>
+</Project>

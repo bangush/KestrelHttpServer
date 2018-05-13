@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<linker>
+  <assembly fullname="PlatformBenchmarks">
+    <type fullname="PlatformBenchmarks.Startup">
+      <method name="Configure" />
+    </type>
+  </assembly>
+</linker>

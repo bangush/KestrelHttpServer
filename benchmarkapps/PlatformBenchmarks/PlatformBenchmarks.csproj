@@ -8,10 +8,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Prevent the SDK from validating the supported tfm. Can be removed when a new SDK supporting netcoreapp2.2 is available. -->
     <NETCoreAppMaximumVersion>99.9</NETCoreAppMaximumVersion>
+    <ILLinkClearInitLocals>true</ILLinkClearInitLocals>
   </PropertyGroup>
   
   <ItemGroup>
     <PackageReference Include="Utf8Json" Version="$(Utf8JsonPackageVersion)" />
+    <PackageReference Include="ILLink.Tasks" Version="$(ILLinkTasksPackageVersion)" />
   </ItemGroup>
   
   <!-- These references are used when running locally -->
@@ -26,4 +28,6 @@
   <ItemGroup Condition="'$(BenchmarksTargetFramework)' != ''">
     <PackageReference Include="Microsoft.AspNetCore.All" Version="$(MicrosoftAspNetCoreAllPackageVersion)" />
   </ItemGroup>
+  
+  <Import Project="$(MSBuildThisFileDirectory)ILLink.targets" />
 </Project>
