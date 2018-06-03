@@ -97,7 +97,7 @@ namespace {namespaceName}
         {{
             get
             {{
-                object feature = null;{Each(features, feature => $@"
+                {(className == "HttpProtocol" ? "ValidateState();" + Environment.NewLine + "                " : "")}object feature = null;{Each(features, feature => $@"
                 {(feature.Index != 0 ? "else " : "")}if (key == {feature.Name}Type)
                 {{
                     feature = _current{feature.Name};
@@ -112,7 +112,7 @@ namespace {namespaceName}
 
             set
             {{
-                _featureRevision++;
+                {(className == "HttpProtocol" ? "ValidateState();" + Environment.NewLine + "                " : "")}_featureRevision++;
 {Each(features, feature => $@"
                 {(feature.Index != 0 ? "else " : "")}if (key == {feature.Name}Type)
                 {{
@@ -126,7 +126,7 @@ namespace {namespaceName}
         }}
 
         TFeature IFeatureCollection.Get<TFeature>()
-        {{
+        {{{(className == "HttpProtocol" ? Environment.NewLine + "            ValidateState();" : "")}
             TFeature feature = default;{Each(features, feature => $@"
             {(feature.Index != 0 ? "else " : "")}if (typeof(TFeature) == typeof({feature.Name}))
             {{
@@ -146,7 +146,7 @@ namespace {namespaceName}
         }}
 
         void IFeatureCollection.Set<TFeature>(TFeature feature)
-        {{
+        {{{(className == "HttpProtocol" ? Environment.NewLine + "            ValidateState();" : "")}
             _featureRevision++;{Each(features, feature => $@"
             {(feature.Index != 0 ? "else " : "")}if (typeof(TFeature) == typeof({feature.Name}))
             {{
@@ -159,7 +159,7 @@ namespace {namespaceName}
         }}
 
         private IEnumerable<KeyValuePair<Type, object>> FastEnumerable()
-        {{{Each(features, feature => $@"
+        {{{(className == "HttpProtocol" ? Environment.NewLine + "            ValidateState();" : "")}{Each(features, feature => $@"
             if (_current{feature.Name} != null)
             {{
                 yield return new KeyValuePair<Type, object>({feature.Name}Type, _current{feature.Name});

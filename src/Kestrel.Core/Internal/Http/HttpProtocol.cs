@@ -1349,5 +1349,19 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
                 useSynchronizationContext: false,
                 minimumSegmentSize: KestrelMemoryPool.MinimumSegmentSize
             ));
+
+        private void ValidateState()
+        {
+            if (_requestProcessingStatus != RequestProcessingStatus.AppStarted &&
+                _requestProcessingStatus != RequestProcessingStatus.ResponseStarted)
+            {
+                ThrowInvalidStateToAccess();
+            }
+        }
+
+        private static void ThrowInvalidStateToAccess()
+        {
+            throw new InvalidOperationException("Request properties are being accessed when there is no current request.");
+        }
     }
 }

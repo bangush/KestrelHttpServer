@@ -138,6 +138,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
         {
             get
             {
+                ValidateState();
                 object feature = null;
                 if (key == IHttpRequestFeatureType)
                 {
@@ -233,6 +234,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
             set
             {
+                ValidateState();
                 _featureRevision++;
 
                 if (key == IHttpRequestFeatureType)
@@ -328,6 +330,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
         TFeature IFeatureCollection.Get<TFeature>()
         {
+            ValidateState();
             TFeature feature = default;
             if (typeof(TFeature) == typeof(IHttpRequestFeature))
             {
@@ -428,6 +431,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
         void IFeatureCollection.Set<TFeature>(TFeature feature)
         {
+            ValidateState();
             _featureRevision++;
             if (typeof(TFeature) == typeof(IHttpRequestFeature))
             {
@@ -521,6 +525,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
         private IEnumerable<KeyValuePair<Type, object>> FastEnumerable()
         {
+            ValidateState();
             if (_currentIHttpRequestFeature != null)
             {
                 yield return new KeyValuePair<Type, object>(IHttpRequestFeatureType, _currentIHttpRequestFeature);

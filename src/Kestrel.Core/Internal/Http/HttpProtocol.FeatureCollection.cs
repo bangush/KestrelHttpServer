@@ -44,16 +44,23 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
         {
             get
             {
+                ValidateState();
                 if (_methodText != null)
                 {
                     return _methodText;
                 }
 
-                _methodText = HttpUtilities.MethodToString(Method) ?? string.Empty;
-                return _methodText;
+                var methodText = HttpUtilities.MethodToString(Method);
+                if (methodText != null)
+                {
+                    _methodText = methodText;
+                }
+
+                return methodText ?? string.Empty;
             }
             set
             {
+                ValidateState();
                 _methodText = value;
             }
         }
@@ -84,7 +91,11 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
         IHeaderDictionary IHttpRequestFeature.Headers
         {
-            get => RequestHeaders;
+            get
+            {
+                ValidateState();
+                return RequestHeaders;
+            }
             set => RequestHeaders = value;
         }
 
@@ -108,7 +119,11 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http
 
         IHeaderDictionary IHttpResponseFeature.Headers
         {
-            get => ResponseHeaders;
+            get
+            {
+                ValidateState();
+                return ResponseHeaders;
+            }
             set => ResponseHeaders = value;
         }
 
